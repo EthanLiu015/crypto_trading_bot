@@ -25,6 +25,32 @@ _BARS_PER_YEAR = {
 }
 
 
+def _trade_record(
+    entry_time: str,
+    exit_time: str,
+    side: float,
+    entry_price: float,
+    exit_price: float,
+    pnl_usd: float,
+    equity_before: float,
+    equity_after: float,
+    note: str = "",
+) -> dict:
+    side_label = "long" if side > 0 else "short"
+    pnl_pct = (pnl_usd / equity_before * 100) if equity_before > 0 else 0.0
+    return {
+        "entry_time": entry_time,
+        "exit_time": exit_time,
+        "side": side_label,
+        "entry_price": round(entry_price, 2),
+        "exit_price": round(exit_price, 2),
+        "pnl_usd": round(pnl_usd, 2),
+        "pnl_pct": round(pnl_pct, 2),
+        "equity_after": round(equity_after, 2),
+        "note": note,
+    }
+
+
 def _simulate_bar(
     equity: float,
     position: float,
@@ -101,6 +127,11 @@ def run_backtest(
     equity_timestamps: list[int] = []
     position = 0.0
     trades: list[float] = []
+    trade_log: list[dict] = []
+    entry_price: float | None = None
+    entry_side: float | None = None
+    entry_time: str | None = None
+    exposure = 0.1
     warmup = min(50, len(test_df) // 4)
 
     def _ts_ms(global_bar: int) -> int:
@@ -120,17 +151,46 @@ def run_backtest(
 
         row = test_df.iloc[i]
         next_row = test_df.iloc[i + 1]
+        bar_open = float(row["open"])
+        fill_price = float(next_row["open"])
+        exit_iso = pd.to_datetime(_ts_ms(split_idx + i + 1), unit="ms", utc=True).isoformat()
+        prev_position = position
+        equity_before = equity
+
         equity, position, trade_pnl = _simulate_bar(
             equity,
             position,
             sig,
-            float(row["open"]),
-            float(next_row["open"]),
+            bar_open,
+            fill_price,
             slippage,
             fee,
         )
+
         if trade_pnl is not None:
             trades.append(trade_pnl)
+            if entry_price is not None and entry_side is not None and entry_time is not None:
+                trade_log.append(
+                    _trade_record(
+                        entry_time=entry_time,
+                        exit_time=exit_iso,
+                        side=entry_side,
+                        entry_price=entry_price,
+                        exit_price=fill_price,
+                        pnl_usd=trade_pnl,
+                        equity_before=equity_before,
+                        equity_after=equity,
+                    )
+                )
+            entry_price = None
+            entry_side = None
+            entry_time = None
+
+        if position != 0 and prev_position == 0:
+            entry_price = fill_price
+            entry_side = position
+            entry_time = exit_iso
+
         equity_curve.append(equity)
         equity_timestamps.append(_ts_seconds(split_idx + i + 1))
 
@@ -174,6 +234,7 @@ def run_backtest(
         "max_drawdown": max_dd,
         "win_rate": float(win_rate),
         "num_trades": len(trades),
+        "trades": trade_log,
         "equity_curve": equity_curve,
         "equity_timestamps": equity_timestamps,
         "test_start": test_start.isoformat(),
@@ -200,6 +261,7 @@ def _empty_result(symbol: str = "", timeframe: str = "") -> dict:
         "max_drawdown": 0.0,
         "win_rate": 0.0,
         "num_trades": 0,
+        "trades": [],
         "lookback_days": 0,
         "data_bars": 0,
         "data_days": 0,
