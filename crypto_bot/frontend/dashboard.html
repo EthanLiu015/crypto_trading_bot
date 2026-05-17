@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crypto Trading Bot</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      display: flex;
+      flex-direction: column;
+    }
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      border-bottom: 1px solid #21262d;
+      background: #161b22;
+      flex-shrink: 0;
+    }
+    .header-left { display: flex; align-items: center; gap: 24px; }
+    .header h1 { font-size: 1.25rem; font-weight: 600; white-space: nowrap; }
+    .tabs { display: flex; gap: 4px; }
+    .tab {
+      padding: 8px 18px; border: none; border-radius: 6px;
+      background: transparent; color: #8b949e;
+      font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    }
+    .tab:hover { color: #e6edf3; background: #21262d; }
+    .tab.active { background: #1f6feb; color: #fff; }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      display: inline-block; margin-right: 8px;
+    }
+    .status-dot.running { background: #3fb950; box-shadow: 0 0 8px #3fb950; }
+    .status-dot.stopped { background: #f85149; }
+    .main-content {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 16px;
+      padding: 16px 24px;
+      height: 100%;
+    }
+    @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+    .panel {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .panel h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8b949e;
+      margin-bottom: 12px;
+    }
+    .chart-container { height: 420px; width: 100%; }
+    .regime-bar { display: flex; height: 28px; border-radius: 6px; overflow: hidden; }
+    .regime-seg {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .regime-trending { background: #2dd4bf; color: #042f2e; }
+    .regime-ranging { background: #fbbf24; color: #422006; }
+    .regime-breakout { background: #fb7185; color: #4c0519; }
+    .gauge-track {
+      height: 12px; background: #21262d; border-radius: 6px;
+      position: relative; overflow: hidden;
+    }
+    .gauge-fill {
+      position: absolute; top: 0; height: 100%;
+      border-radius: 6px;
+    }
+    .gauge-labels {
+      display: flex; justify-content: space-between;
+      font-size: 0.75rem; color: #8b949e; margin-top: 4px;
+    }
+    .signal-value { text-align: center; font-size: 2rem; font-weight: 700; margin: 8px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #21262d; }
+    th { color: #8b949e; font-weight: 500; }
+    .pnl-pos { color: #3fb950; }
+    .pnl-neg { color: #f85149; }
+    .btn {
+      padding: 10px 20px; border: none; border-radius: 6px;
+      font-weight: 600; cursor: pointer; font-size: 0.9rem;
+    }
+    .btn-block { width: 100%; }
+    .btn-start { background: #238636; color: #fff; }
+    .btn-stop { background: #da3633; color: #fff; }
+    .btn-run { background: #1f6feb; color: #fff; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    input, select {
+      padding: 8px; background: #0d1117; border: 1px solid #30363d;
+      border-radius: 6px; color: #e6edf3;
+    }
+    .field-input { width: 100%; }
+    .symbol-select { width: auto; margin: 0; }
+    .price-tag { font-size: 1.5rem; font-weight: 700; color: #58a6ff; margin-left: 16px; }
+    .empty { color: #8b949e; font-size: 0.875rem; }
+    .symbol-picker { display: flex; gap: 6px; }
+    .symbol-option {
+      padding: 8px 14px; border: 1px solid #30363d; border-radius: 6px;
+      background: #0d1117; color: #8b949e; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+    }
+    .symbol-option.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+    .symbol-option:hover:not(.active) { border-color: #58a6ff; color: #e6edf3; }
+    .field-label { display: block; font-size: 0.75rem; color: #8b949e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .backtest-view {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      padding: 16px 24px;
+      gap: 12px;
+      overflow: hidden;
+    }
+    .backtest-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 20px;
+      flex-shrink: 0;
+      padding: 14px 16px;
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+    }
+    .toolbar-group { display: flex; flex-direction: column; }
+    .toolbar-group.days { width: 100px; }
+    .toolbar-group.run { margin-left: auto; }
+    .backtest-metrics {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      flex: 1;
+      justify-content: flex-end;
+    }
+    .metric {
+      background: #0d1117;
+      padding: 10px 16px;
+      border-radius: 6px;
+      text-align: center;
+      min-width: 90px;
+    }
+    .metric .val { font-size: 1.15rem; font-weight: 600; }
+    .metric .lbl { font-size: 0.7rem; color: #8b949e; margin-top: 2px; }
+    .backtest-chart-panel {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .backtest-chart-panel h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8b949e;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+    }
+    .backtest-chart-full { flex: 1; min-height: 280px; width: 100%; }
+    .backtest-placeholder {
+      flex: 1;
+      min-height: 280px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #8b949e;
+      font-size: 0.95rem;
+      text-align: center;
+      padding: 24px;
+    }
+    .backtest-error {
+      flex-shrink: 0;
+      padding: 10px 14px;
+      background: #3d1214;
+      border: 1px solid #f85149;
+      border-radius: 6px;
+      color: #ffa198;
+      font-size: 0.875rem;
+    }
+    .selected-symbol { font-size: 0.85rem; color: #58a6ff; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <!-- build: 2026-05-17-v9-jsx-fix -->
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    const BACKTEST_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
+
+    function ema(data, period) {
+      const k = 2 / (period + 1);
+      const out = [];
+      let prev = data[0];
+      for (let i = 0; i < data.length; i++) {
+        prev = i === 0 ? data[0] : data[i] * k + prev * (1 - k);
+        out.push(i < period - 1 ? null : prev);
+      }
+      return out;
+    }
+
+    function RegimeBar({ regime }) {
+      const t = (regime.trending || 0) * 100;
+      const r = (regime.ranging || 0) * 100;
+      const b = (regime.breakout || 0) * 100;
+      return (
+        <div className="panel">
+          <h2>Regime Probabilities</h2>
+          <div className="regime-bar">
+            {t > 0 && <div className="regime-seg regime-trending" style={{ width: t + '%' }}>Trend {t.toFixed(0)}%</div>}
+            {r > 0 && <div className="regime-seg regime-ranging" style={{ width: r + '%' }}>Range {r.toFixed(0)}%</div>}
+            {b > 0 && <div className="regime-seg regime-breakout" style={{ width: b + '%' }}>Break {b.toFixed(0)}%</div>}
+          </div>
+        </div>
+      );
+    }
+
+    function SignalGauge({ signal }) {
+      const color = signal > 0.2 ? '#3fb950' : signal < -0.2 ? '#f85149' : '#8b949e';
+      const pct = ((signal + 1) / 2) * 100;
+      return (
+        <div className="panel">
+          <h2>Signal Strength</h2>
+          <div className="signal-value" style={{ color }}>{signal.toFixed(3)}</div>
+          <div className="gauge-track">
+            <div className="gauge-fill" style={{
+              left: signal >= 0 ? '50%' : pct + '%',
+              width: Math.abs(signal) * 50 + '%',
+              background: color,
+            }} />
+          </div>
+          <div className="gauge-labels">
+            <span>Short (-1)</span><span>Flat (0)</span><span>Long (+1)</span>
+          </div>
+        </div>
+      );
+    }
+
+    function PositionsTable({ positions }) {
+      return (
+        <div className="panel">
+          <h2>Open Positions</h2>
+          {!positions?.length ? (
+            <p className="empty">No open positions</p>
+          ) : (
+            <table>
+              <thead>
+                <tr><th>Symbol</th><th>Side</th><th>Size USD</th><th>PnL</th></tr>
+              </thead>
+              <tbody>
+                {positions.map((p, i) => (
+                  <tr key={i}>
+                    <td>{p.symbol}</td>
+                    <td>{p.side}</td>
+                    <td>${(p.size_usd || 0).toFixed(2)}</td>
+                    <td className={(p.unrealized_pnl || 0) >= 0 ? 'pnl-pos' : 'pnl-neg'}>
+                      ${(p.unrealized_pnl || 0).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      );
+    }
+
+    function PriceChart({ symbol, regime }) {
+      const containerRef = useRef(null);
+      useEffect(() => {
+        if (!containerRef.current || !window.LightweightCharts) return;
+        const chart = LightweightCharts.createChart(containerRef.current, {
+          layout: { background: { color: '#161b22' }, textColor: '#8b949e' },
+          grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
+          width: containerRef.current.clientWidth,
+          height: 420,
+        });
+        const candles = chart.addCandlestickSeries();
+        const ema9s = chart.addLineSeries({ color: '#58a6ff', lineWidth: 1 });
+        const ema21s = chart.addLineSeries({ color: '#a371f7', lineWidth: 1 });
+        const dom = regime.trending > regime.ranging && regime.trending > regime.breakout
+          ? 'trending' : (regime.breakout || 0) > (regime.ranging || 0) ? 'breakout' : 'ranging';
+        const colors = { trending: '#2dd4bf', ranging: '#fbbf24', breakout: '#fb7185' };
+        const c = colors[dom];
+        candles.applyOptions({
+          upColor: c, downColor: c, borderUpColor: c, borderDownColor: c,
+          wickUpColor: c, wickDownColor: c,
+        });
+        fetch('https://api.binance.com/api/v3/klines?symbol=' + symbol + '&interval=1h&limit=200')
+          .then(r => r.json())
+          .then(klines => {
+            const data = klines.map(k => ({
+              time: Math.floor(k[0] / 1000),
+              open: +k[1], high: +k[2], low: +k[3], close: +k[4],
+            }));
+            candles.setData(data);
+            const closes = data.map(d => d.close);
+            const e9 = ema(closes, 9);
+            const e21 = ema(closes, 21);
+            ema9s.setData(data.map((d, i) => e9[i] != null ? { time: d.time, value: e9[i] } : null).filter(Boolean));
+            ema21s.setData(data.map((d, i) => e21[i] != null ? { time: d.time, value: e21[i] } : null).filter(Boolean));
+          });
+        const ro = new ResizeObserver(() => {
+          chart.applyOptions({ width: containerRef.current.clientWidth });
+        });
+        ro.observe(containerRef.current);
+        return () => { ro.disconnect(); chart.remove(); };
+      }, [symbol, regime]);
+      return (
+        <div className="panel">
+          <h2>{symbol} — 1H Chart</h2>
+          <div ref={containerRef} className="chart-container" />
+        </div>
+      );
+    }
+
+    function BacktestView() {
+      const [symbol, setSymbol] = useState('BTCUSDT');
+      const [days, setDays] = useState(365);
+      const [result, setResult] = useState(null);
+      const [error, setError] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const chartRef = useRef(null);
+      const chartInstance = useRef(null);
+
+      function hasChartData(data) {
+        return (
+          data &&
+          Array.isArray(data.equity_curve) &&
+          data.equity_curve.length > 0 &&
+          Array.isArray(data.equity_timestamps) &&
+          data.equity_timestamps.length === data.equity_curve.length
+        );
+      }
+
+      async function runBacktest() {
+        setLoading(true);
+        setError(null);
+        setResult(null);
+        try {
+          const res = await fetch('/backtest?symbol=' + encodeURIComponent(symbol) + '&days=' + days);
+          const data = await res.json();
+          if (!res.ok) {
+            setError(data.detail || 'Backtest failed');
+            return;
+          }
+          if (!hasChartData(data)) {
+            setError('Backtest returned no chart data. Restart the API server and try again.');
+            setResult(data);
+            return;
+          }
+          setResult(data);
+        } catch (err) {
+          console.error(err);
+          setError('Could not reach the server. Is ./run.sh --mode api running?');
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      useEffect(() => {
+        if (!hasChartData(result) || !chartRef.current || !window.LightweightCharts) return;
+
+        let cancelled = false;
+        let resizeObserver = null;
+
+        function mountChart() {
+          if (cancelled || !chartRef.current) return;
+          const el = chartRef.current;
+          if (el.clientWidth < 10 || el.clientHeight < 10) return false;
+
+          if (chartInstance.current) {
+            chartInstance.current.remove();
+            chartInstance.current = null;
+          }
+
+          const height = Math.max(el.clientHeight, 280);
+          const chart = LightweightCharts.createChart(el, {
+            layout: { background: { color: '#0d1117' }, textColor: '#8b949e' },
+            grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
+            width: el.clientWidth,
+            height: height,
+            timeScale: { timeVisible: true, secondsVisible: false },
+          });
+          chart.addAreaSeries({
+            lineColor: '#58a6ff',
+            topColor: 'rgba(88,166,255,0.35)',
+            bottomColor: 'rgba(88,166,255,0)',
+            lineWidth: 2,
+          }).setData(
+            result.equity_curve.map((v, i) => ({
+              time: result.equity_timestamps[i],
+              value: v,
+            }))
+          );
+          chart.timeScale().fitContent();
+          chartInstance.current = chart;
+
+          resizeObserver = new ResizeObserver(() => {
+            if (!chartRef.current || !chartInstance.current) return;
+            const w = chartRef.current.clientWidth;
+            const h = Math.max(chartRef.current.clientHeight, 280);
+            if (w > 10 && h > 10) {
+              chartInstance.current.applyOptions({ width: w, height: h });
+            }
+          });
+          resizeObserver.observe(el);
+          return true;
+        }
+
+        if (!mountChart()) {
+          resizeObserver = new ResizeObserver(() => {
+            if (mountChart() && resizeObserver) {
+              resizeObserver.disconnect();
+            }
+          });
+          resizeObserver.observe(chartRef.current);
+        }
+
+        return () => {
+          cancelled = true;
+          if (resizeObserver) resizeObserver.disconnect();
+          if (chartInstance.current) {
+            chartInstance.current.remove();
+            chartInstance.current = null;
+          }
+        };
+      }, [result]);
+
+      return (
+        <div className="backtest-view">
+          <div className="backtest-toolbar">
+            <div className="toolbar-group">
+              <span className="field-label">Symbol</span>
+              <div className="symbol-picker">
+                {BACKTEST_SYMBOLS.map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    className={'symbol-option' + (symbol === s ? ' active' : '')}
+                    onClick={() => setSymbol(s)}
+                  >
+                    {s.replace('USDT', '')}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="toolbar-group days">
+              <span className="field-label">Days</span>
+              <input
+                className="field-input"
+                type="number"
+                value={days}
+                min={30}
+                max={730}
+                onChange={e => setDays(+e.target.value)}
+              />
+            </div>
+            <div className="toolbar-group run">
+              <button className="btn btn-run" onClick={runBacktest} disabled={loading}>
+                {loading ? 'Running…' : 'Run Backtest'}
+              </button>
+            </div>
+            {result && hasChartData(result) && (
+              <div className="backtest-metrics">
+                <div className="metric">
+                  <div className="val">{((result.total_return || 0) * 100).toFixed(1)}%</div>
+                  <div className="lbl">Return</div>
+                </div>
+                <div className="metric">
+                  <div className="val">{(result.sharpe_ratio || 0).toFixed(2)}</div>
+                  <div className="lbl">Sharpe</div>
+                </div>
+                <div className="metric">
+                  <div className="val">{((result.max_drawdown || 0) * 100).toFixed(1)}%</div>
+                  <div className="lbl">Max DD</div>
+                </div>
+                <div className="metric">
+                  <div className="val">{((result.win_rate || 0) * 100).toFixed(0)}%</div>
+                  <div className="lbl">Win Rate</div>
+                </div>
+                <div className="metric">
+                  <div className="val">{result.num_trades || 0}</div>
+                  <div className="lbl">Trades</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="backtest-chart-panel">
+            <h2>
+              Equity Curve — {symbol} ({days}d lookback)
+              {result?.test_start && (
+                <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 400, color: '#8b949e', marginTop: 4 }}>
+                  Chart: out-of-sample test only ({Math.round((result.train_ratio || 0.8) * 100)}% of data used to train regime model).
+                  {' '}Fetched {result.data_days}d of {days}d requested ({result.data_bars} bars).
+                  {' '}Test: {new Date(result.test_start).toLocaleDateString()} → {new Date(result.test_end).toLocaleDateString()}.
+                </span>
+              )}
+            </h2>
+            {hasChartData(result) ? (
+              <div ref={chartRef} className="backtest-chart-full" />
+            ) : (
+              <div className="backtest-placeholder">
+                {loading ? 'Running backtest…' : 'Run a backtest to see the full-page equity curve'}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('live');
+      const [status, setStatus] = useState({
+        running: false,
+        regime_probs: { trending: 0.33, ranging: 0.33, breakout: 0.34 },
+        current_signal: 0,
+        open_positions: [],
+        latest_prices: {},
+      });
+      const [symbol, setSymbol] = useState('BTCUSDT');
+
+      useEffect(() => {
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(proto + '://' + location.host + '/ws/feed');
+        ws.onmessage = (ev) => {
+          const d = JSON.parse(ev.data);
+          setStatus({
+            running: d.running,
+            regime_probs: d.regime || {},
+            current_signal: d.signal || 0,
+            open_positions: d.positions || [],
+            latest_prices: d.prices || {},
+          });
+        };
+        const poll = setInterval(() => {
+          fetch('/status').then(r => r.json()).then(setStatus).catch(() => {});
+        }, 5000);
+        fetch('/status').then(r => r.json()).then(setStatus).catch(() => {});
+        return () => { ws.close(); clearInterval(poll); };
+      }, []);
+
+      async function toggleBot() {
+        await fetch(status.running ? '/bot/stop' : '/bot/start', { method: 'POST' });
+        setStatus(await fetch('/status').then(r => r.json()));
+      }
+
+      const regime = status.regime_probs || {};
+      const price = status.latest_prices?.[symbol];
+
+      return (
+        <div className="app-shell">
+          <header className="header">
+            <div className="header-left">
+              <h1>
+                <span className={'status-dot ' + (status.running ? 'running' : 'stopped')} />
+                Crypto Trading Bot
+              </h1>
+              <nav className="tabs">
+                <button
+                  type="button"
+                  className={'tab' + (activeTab === 'live' ? ' active' : '')}
+                  onClick={() => setActiveTab('live')}
+                >
+                  Live
+                </button>
+                <button
+                  type="button"
+                  className={'tab' + (activeTab === 'backtest' ? ' active' : '')}
+                  onClick={() => setActiveTab('backtest')}
+                >
+                  Backtest
+                </button>
+              </nav>
+            </div>
+            {activeTab === 'live' && (
+              <div>
+                <select className="symbol-select" value={symbol} onChange={e => setSymbol(e.target.value)}>
+                  {BACKTEST_SYMBOLS.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                {price && (
+                  <span className="price-tag">
+                    ${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </span>
+                )}
+              </div>
+            )}
+          </header>
+
+          <main className="main-content">
+            {activeTab === 'live' && (
+              <div className="grid">
+                <div>
+                  <PriceChart symbol={symbol} regime={regime} />
+                </div>
+                <div>
+                  <RegimeBar regime={regime} />
+                  <SignalGauge signal={status.current_signal || 0} />
+                  <PositionsTable positions={status.open_positions} />
+                  <div className="panel">
+                    <button
+                      className={'btn btn-block ' + (status.running ? 'btn-stop' : 'btn-start')}
+                      onClick={toggleBot}
+                    >
+                      {status.running ? 'Stop Bot' : 'Start Bot'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeTab === 'backtest' && <BacktestView />}
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
